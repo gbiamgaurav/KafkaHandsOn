@@ -1,0 +1,10 @@
+# Kafka client
+kafka-python-ng>=2.2.3
+
+# ML
+scikit-learn>=1.4.0
+numpy>=1.26.0
+
+# GenAI (optional — pipeline runs in mock mode without this)
+groq>=1.4.0
+python-dotenv>=1.0.0
