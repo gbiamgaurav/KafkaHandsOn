@@ -1,0 +1,8 @@
+# Copy this file to terraform.tfvars and fill in your values:
+#   cp terraform.tfvars.example terraform.tfvars
+
+project_id   = "your-gcp-project-id"   # required: gcloud projects list
+region       = "us-central1"            # change if preferred
+zone         = "us-central1-a"
+cluster_name = "kafka-handson"
+groq_api_key = ""                       # optional: paste gsk_... for real LLM calls
