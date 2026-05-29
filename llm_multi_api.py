@@ -15,7 +15,6 @@ Set ANTHROPIC_API_KEY to get real Claude responses; otherwise runs in mock mode.
 """
 
 import json
-import os
 import random
 import threading
 import time
@@ -28,7 +27,12 @@ from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import TopicAlreadyExistsError
 
 BOOTSTRAP_SERVERS = "localhost:9092"
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+GROQ_API_KEY = "YOUR_GROQ_API_KEY_HERE"
+
+GROQ_MODELS = {
+    "llama3-8b":  "llama3-8b-8192",
+    "mixtral":    "mixtral-8x7b-32768",
+}
 
 TOPICS = {
     "high":        "genai.llm.requests-high",
@@ -134,29 +138,19 @@ METRICS = Metrics()
 
 def call_llm(prompt: str, provider: str) -> tuple[str, float]:
     """Returns (response_text, latency_ms)."""
+    from groq import Groq
     start = time.time()
-
-    if provider == "claude" and ANTHROPIC_API_KEY:
-        try:
-            import anthropic
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            msg = client.messages.create(
-                model="claude-haiku-4-5-20251001",  # cheapest/fastest for demo
-                max_tokens=150,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = msg.content[0].text
-        except Exception as e:
-            text = f"[API ERROR] {e}"
-    else:
-        # Mock: simulate variable latency per provider
-        latency_sim = {"claude": 0.4, "gpt4o": 0.6, "gemini": 0.35, "fallback": 0.2}
-        time.sleep(latency_sim.get(provider, 0.3) + random.uniform(0, 0.15))
-        text = (
-            f"[MOCK/{provider.upper()}] This is a simulated response to: "
-            f"'{prompt[:50]}...' — set ANTHROPIC_API_KEY for real Claude responses."
+    model_id = GROQ_MODELS.get(provider, "llama3-8b-8192")
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        completion = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
         )
-
+        text = completion.choices[0].message.content
+    except Exception as e:
+        text = f"[API ERROR/{provider}] {e}"
     latency_ms = (time.time() - start) * 1000
     return text, latency_ms
 
@@ -375,7 +369,7 @@ def ensure_topics():
 def main():
     print("=" * 65)
     print("  MULTI-LLM API FAN-OUT DEMO")
-    print(f"  Mode: {'Claude Haiku (real API)' if ANTHROPIC_API_KEY else 'MOCK (set ANTHROPIC_API_KEY for real calls)'}")
+    print(f"  Mode: Groq API — llama3-8b-8192 (pool-a) | mixtral-8x7b-32768 (pool-b)")
     print("=" * 65)
 
     ensure_topics()
@@ -390,24 +384,24 @@ def main():
 
     stop_event = threading.Event()
 
-    # Worker Pool A — "Claude" pool, reads all 3 priority topics, 30 RPM
+    # Worker Pool A — llama3-8b, reads all 3 priority topics, 30 RPM
     worker_a = LLMWorker(
-        name="claude-pool-a",
-        provider="claude",
+        name="llama3-pool-a",
+        provider="llama3-8b",
         rpm_limit=30,
         topic_list=[TOPICS["high"], TOPICS["medium"], TOPICS["low"]],
-        group_id="llm-workers-claude",
+        group_id="llm-workers-llama3",
         producer=producer,
         stop_event=stop_event,
     )
 
-    # Worker Pool B — "Fallback" pool, also reads all 3, 60 RPM (higher throughput)
+    # Worker Pool B — mixtral, also reads all 3, 60 RPM (higher throughput)
     worker_b = LLMWorker(
-        name="fallback-pool-b",
-        provider="fallback",
+        name="mixtral-pool-b",
+        provider="mixtral",
         rpm_limit=60,
         topic_list=[TOPICS["high"], TOPICS["medium"], TOPICS["low"]],
-        group_id="llm-workers-fallback",
+        group_id="llm-workers-mixtral",
         producer=producer,
         stop_event=stop_event,
     )

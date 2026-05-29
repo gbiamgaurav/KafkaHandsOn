@@ -333,13 +333,13 @@ consumer.subscribe(['llm-requests-high', 'llm-requests-medium', 'llm-requests-lo
 
 ```bash
 # Same topic, two consumer groups — each runs a different model
-# Group A reads all partitions with Claude
+# Group A reads all partitions with llama3-8b
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --group llm-workers-claude --describe
+  --group llm-workers-llama3 --describe
 
-# Group B reads same partitions with GPT-4o
+# Group B reads same partitions with mixtral
 kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
-  --group llm-workers-gpt4o --describe
+  --group llm-workers-mixtral --describe
 
 # Both groups get every message independently
 # Compare response quality, latency, cost in the responses topic
@@ -347,13 +347,19 @@ kafka-consumer-groups.sh --bootstrap-server localhost:9092 \
 
 #### Live Demo: [`llm_multi_api.py`](llm_multi_api.py)
 
+Set your Groq API key in the file before running:
+```python
+# llm_multi_api.py — line 31
+GROQ_API_KEY = "gsk_your_key_here"
+```
+
 ```bash
 python3 llm_multi_api.py
 ```
 
 This demo shows:
 1. A producer publishing 20 LLM requests with mixed priorities (high/medium/low)
-2. Two simulated worker pools (Claude + fallback) consuming in parallel
+2. Two worker pools consuming in parallel — `llama3-8b-8192` (pool-a, 30 RPM) and `mixtral-8x7b-32768` (pool-b, 60 RPM) via Groq API
 3. Per-worker token-bucket rate limiter enforcing realistic API limits
 4. Dead letter routing for requests that exceed retry budget
 5. Live metrics: requests/sec, avg latency, provider distribution, queue depth
@@ -1588,10 +1594,12 @@ sleep 15 && ./create-topics.sh
 
 Demonstrates the full multi-LLM fan-out pattern from Section 3.6:
 1. Publishes requests to three priority topics (`high` / `medium` / `low`)
-2. Two worker pools consume in parallel (Claude pool + fallback pool)
+2. Two worker pools consume in parallel — `llama3-pool-a` (`llama3-8b-8192`, 30 RPM) and `mixtral-pool-b` (`mixtral-8x7b-32768`, 60 RPM), both via Groq API
 3. Per-worker token-bucket enforces configurable RPM limits
 4. Requests that exceed retry budget are routed to `genai.llm.dead-letter`
 5. Live dashboard prints: queue depth per tier, provider distribution, avg latency
+
+Requires a Groq API key set as `GROQ_API_KEY` on line 31 of the file.
 
 ### [`producer.py`](producer.py)
 
